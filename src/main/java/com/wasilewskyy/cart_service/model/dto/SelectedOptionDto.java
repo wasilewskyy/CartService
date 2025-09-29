@@ -14,4 +14,6 @@ public class SelectedOptionDto {
     private String value;
     private String displayName;
     private BigDecimal additionalPrice;
+    private Long productId;
+    private Long configurationId;
 }

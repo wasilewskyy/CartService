@@ -16,4 +16,6 @@ public class SelectedOption {
     private String value;
     private String displayName;
     private BigDecimal additionalPrice = BigDecimal.ZERO;
+    private Long productId;
+    private Long configurationId;
 }
