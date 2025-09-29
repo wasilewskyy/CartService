@@ -1,5 +1,8 @@
 package com.wasilewskyy.cart_service.model.entity;
 
+import com.wasilewskyy.cart_service.mapper.CartMapper;
+import com.wasilewskyy.cart_service.model.dto.ProductSummaryDto;
+import com.wasilewskyy.cart_service.model.dto.SelectedOptionDto;
 import com.wasilewskyy.cart_service.model.enums.ProductType;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
@@ -50,5 +53,14 @@ public class CartItem {
 
     public BigDecimal getLineTotal() {
         return getItemPrice().multiply(BigDecimal.valueOf(quantity));
+    }
+
+    public void incrementQuantity(int amount) {
+        this.quantity += amount;
+    }
+
+    public void updateOptions(List<SelectedOption> newOptions) {
+        this.selectedOptions.clear();
+        this.selectedOptions.addAll(newOptions);
     }
 }

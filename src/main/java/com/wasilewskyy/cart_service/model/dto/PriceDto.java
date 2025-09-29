@@ -9,8 +9,8 @@ import java.math.BigDecimal;
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
-public class MoneyDto {
+public class PriceDto {
 
-    private BigDecimal amount;
+    private BigDecimal price;
     private String currency;
 }

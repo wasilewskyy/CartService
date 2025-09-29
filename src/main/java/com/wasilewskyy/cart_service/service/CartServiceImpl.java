@@ -1,16 +1,15 @@
 package com.wasilewskyy.cart_service.service;
 
-import com.wasilewskyy.cart_service.client.ProductClient;
 import com.wasilewskyy.cart_service.exception.CartItemNotFoundException;
 import com.wasilewskyy.cart_service.exception.CartNotFoundException;
-import com.wasilewskyy.cart_service.exception.ProductNotFoundException;
 import com.wasilewskyy.cart_service.mapper.CartMapper;
+import com.wasilewskyy.cart_service.model.CartItemFactory;
+import com.wasilewskyy.cart_service.model.CartItemMatcher;
+import com.wasilewskyy.cart_service.model.ProductProvider;
 import com.wasilewskyy.cart_service.model.dto.CartDto;
-import com.wasilewskyy.cart_service.model.dto.ProductSummaryDto;
 import com.wasilewskyy.cart_service.model.dto.SelectedOptionDto;
 import com.wasilewskyy.cart_service.model.entity.Cart;
 import com.wasilewskyy.cart_service.model.entity.CartItem;
-import com.wasilewskyy.cart_service.model.entity.SelectedOption;
 import com.wasilewskyy.cart_service.repository.CartRepository;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
@@ -27,8 +26,10 @@ import java.util.Optional;
 public class CartServiceImpl implements CartService {
 
     private final CartRepository cartRepository;
-    private final ProductClient productClient;
+    private final ProductProvider productProvider;
     private final CartMapper cartMapper;
+    private final CartItemMatcher cartItemMatcher;
+    private final CartItemFactory cartItemFactory;
 
     @Override
     public CartDto createCart() {
@@ -48,27 +49,21 @@ public class CartServiceImpl implements CartService {
     @Override
     public CartDto addItem(String cartId, Long productId, Integer quantity, List<SelectedOptionDto> options) {
         Cart cart = findCartById(cartId);
-        ProductSummaryDto product = getProduct(productId);
+        var product = productProvider.getProductById(productId);
 
-        if (quantity == null || quantity <= 0) {
-            quantity = 1;
-        }
+        int validatedQuantity = validateQuantity(quantity);
 
-        Optional<CartItem> existingItem = cart.getItems().stream()
-                .filter(item -> item.getProductId().equals(productId) &&
-                        hasSameOptions(item.getSelectedOptions(), options))
-                .findFirst();
+        Optional<CartItem> existingItem = cartItemMatcher.findMatchingItem(cart, productId, options);
 
         if (existingItem.isPresent()) {
-            CartItem item = existingItem.get();
-            item.setQuantity(item.getQuantity() + quantity);
+            existingItem.get().incrementQuantity(validatedQuantity);
         } else {
-            CartItem newItem = createCartItem(product, quantity, options);
+            CartItem newItem = cartItemFactory.createCartItem(product, validatedQuantity, options);
             cart.addItem(newItem);
         }
 
         Cart savedCart = cartRepository.save(cart);
-        log.info("Added item to cart {}: product {} with quantity {}", cartId, productId, quantity);
+        log.info("Added item to cart {}: product {} with quantity {}", cartId, productId, validatedQuantity);
         return cartMapper.toDto(savedCart);
     }
 
@@ -82,10 +77,7 @@ public class CartServiceImpl implements CartService {
         }
 
         if (options != null) {
-            List<SelectedOption> selectedOptions = options.stream()
-                    .map(cartMapper::toEntity)
-                    .toList();
-            item.setSelectedOptions(selectedOptions);
+            item.updateOptions(cartItemFactory.mapToSelectedOptions(options));
         }
 
         Cart savedCart = cartRepository.save(cart);
@@ -107,7 +99,7 @@ public class CartServiceImpl implements CartService {
     @Override
     public CartDto clearCart(String cartId) {
         Cart cart = findCartById(cartId);
-        cart.getItems().clear();
+        cart.clearItems();
         Cart savedCart = cartRepository.save(cart);
         log.info("Cleared cart {}", cartId);
         return cartMapper.toDto(savedCart);
@@ -125,45 +117,7 @@ public class CartServiceImpl implements CartService {
                 .orElseThrow(() -> new CartItemNotFoundException("Cart item not found with id: " + itemId));
     }
 
-    private ProductSummaryDto getProduct(Long productId) {
-        try {
-            return productClient.getProductById(productId);
-        } catch (Exception e) {
-            log.error("Failed to fetch product with id: {}", productId, e);
-            throw new ProductNotFoundException("Product not found with id: " + productId);
-        }
-    }
-
-    private CartItem createCartItem(ProductSummaryDto product, Integer quantity, List<SelectedOptionDto> options) {
-        CartItem item = new CartItem();
-        item.setProductId(product.getId());
-        item.setProductName(product.getName());
-        item.setProductType(product.getType());
-        item.setBasePrice(product.getPrice());
-        item.setQuantity(quantity);
-
-        if (options != null) {
-            List<SelectedOption> selectedOptions = options.stream()
-                    .map(cartMapper::toEntity)
-                    .toList();
-            item.setSelectedOptions(selectedOptions);
-        }
-
-        return item;
-    }
-
-    private boolean hasSameOptions(List<SelectedOption> existing, List<SelectedOptionDto> newOptions) {
-        if (existing.size() != (newOptions != null ? newOptions.size() : 0)) {
-            return false;
-        }
-
-        if (newOptions == null) {
-            return existing.isEmpty();
-        }
-
-        return existing.stream()
-                .allMatch(opt -> newOptions.stream()
-                        .anyMatch(newOpt -> opt.getType().equals(newOpt.getType()) &&
-                                opt.getValue().equals(newOpt.getValue())));
+    private int validateQuantity(Integer quantity) {
+        return (quantity == null || quantity <= 0) ? 1 : quantity;
     }
 }
